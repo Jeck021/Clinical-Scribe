@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#f8fafc">
+    <link rel="manifest" id="dynamic-manifest">
+    <title>ClinicalScribe - Medical Dictation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+            -webkit-tap-highlight-color: transparent; /* better mobile feel */
+        }
+        
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Custom scrollbar for the text area */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Pulsing animation for recording state */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .recording-pulse {
+            animation: pulse-ring 2s infinite;
+        }
+        
+        /* Toast animation */
+        @keyframes slideInUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .toast-enter {
+            animation: slideInUp 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="flex flex-col text-slate-800 overflow-hidden bg-slate-50" style="height: 100vh; height: 100dvh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);">
+
+    <header class="bg-white border-b border-slate-200 shadow-sm z-10 flex-none">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="bg-blue-600 p-1.5 sm:p-2 rounded-lg text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 sm:w-6 sm:h-6"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold text-slate-900 leading-tight">ClinicalScribe</h1>
+                    <p class="text-[10px] sm:text-xs text-slate-500 font-medium hidden sm:block">Post-Procedure Dictation</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 sm:gap-4">
+                <span id="network-status" class="hidden items-center gap-1.5 text-[10px] sm:text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"/><path d="M8.53 8.53C7.32 9.28 6.1 10.23 5 11.52A12.72 12.72 0 0 1 2.5 14"/><path d="M11.75 11.75a8.76 8.76 0 0 1 3.25-1.25"/><path d="M16 16c.34-.34.66-.7.96-1.07"/><path d="M21.5 14a12.74 12.74 0 0 0-2.3-3.66"/></svg>
+                    <span class="hidden sm:inline">Offline</span>
+                </span>
+                <button onclick="downloadLocalApp()" class="hidden md:flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors" title="Save App to Device">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                    Save App
+                </button>
+                <span id="status-indicator" class="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm font-medium text-slate-500 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-slate-100 rounded-full transition-colors duration-300">
+                    <span id="status-dot" class="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-slate-400"></span>
+                    <span id="status-text" class="hidden sm:inline">Ready to dictate</span>
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row max-w-7xl mx-auto w-full p-2 sm:p-4 lg:p-8 gap-2 sm:gap-4 md:gap-6 h-full overflow-hidden">
+        
+        <!-- Sidebar for Templates & Instructions -->
+        <aside class="w-full md:w-64 lg:w-72 flex flex-col gap-2 sm:gap-4 shrink-0 flex-none md:flex-1 md:max-h-full">
+            <div class="bg-white rounded-xl border border-slate-200 p-3 sm:p-5 shadow-sm">
+                <h2 class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 sm:mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-600"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect><line x1="16" x2="16" y1="2" y2="6"></line><line x1="8" x2="8" y1="2" y2="6"></line><line x1="3" x2="21" y1="10" y2="10"></line><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path><path d="M16 18h.01"></path></svg>
+                    Insert Template
+                </h2>
+                <div class="flex flex-row md:flex-col gap-2 overflow-x-auto pb-1 md:pb-0 hide-scrollbar" style="-webkit-overflow-scrolling: touch;">
+                    <button onclick="insertTemplate('soap')" class="whitespace-nowrap flex-1 text-center md:text-left px-3 py-2 md:py-2.5 rounded-lg text-sm font-medium text-slate-700 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border border-slate-100 transition-colors active:bg-blue-100">
+                        SOAP Note
+                    </button>
+                    <button onclick="insertTemplate('procedure')" class="whitespace-nowrap flex-1 text-center md:text-left px-3 py-2 md:py-2.5 rounded-lg text-sm font-medium text-slate-700 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border border-slate-100 transition-colors active:bg-blue-100">
+                        Procedure Note
+                    </button>
+                    <button onclick="insertTemplate('consult')" class="whitespace-nowrap flex-1 text-center md:text-left px-3 py-2 md:py-2.5 rounded-lg text-sm font-medium text-slate-700 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border border-slate-100 transition-colors active:bg-blue-100">
+                        Consultation
+                    </button>
+                </div>
+            </div>
+
+            <div class="hidden md:block bg-blue-50 rounded-xl border border-blue-100 p-5">
+                <h3 class="text-sm font-semibold text-blue-800 mb-2">Dictation Tips</h3>
+                <ul class="text-xs text-blue-700 space-y-2 list-disc pl-4">
+                    <li>Speak clearly and at a normal pace.</li>
+                    <li>Say punctuation explicitly (e.g., "comma", "period", "new line").</li>
+                    <li>For best medical term accuracy, use Chrome on a quiet environment.</li>
+                </ul>
+            </div>
+        </aside>
+
+        <section class="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+            
+            <!-- Editor Toolbar -->
+            <div class="h-12 sm:h-14 flex-none border-b border-slate-100 flex items-center justify-between px-2 sm:px-4 bg-slate-50/50">
+                <div class="flex items-center gap-1 sm:gap-2">
+                    <button onclick="clearText()" class="p-1.5 sm:p-2 text-slate-500 hover:text-red-600 active:bg-red-100 rounded-lg transition-colors tooltip" title="Clear All">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sm:w-[18px] sm:h-[18px]"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" x2="10" y1="11" y2="17"></line><line x1="14" x2="14" y1="11" y2="17"></line></svg>
+                    </button>
+                    <div class="w-px h-5 sm:h-6 bg-slate-200 mx-1"></div>
+                    <span class="text-[10px] sm:text-xs text-slate-400 font-medium" id="word-count">0 words</span>
+                </div>
+                <div class="flex items-center gap-1.5 sm:gap-2">
+                    <button onclick="copyToClipboard()" class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors shadow-sm active:bg-slate-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sm:w-4 sm:h-4"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                        Copy
+                    </button>
+                    <button onclick="exportToTxt()" class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors shadow-sm active:bg-slate-900">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sm:w-4 sm:h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                        <span class="hidden sm:inline">Export</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Text Area -->
+            <div class="flex-1 relative p-3 sm:p-4 flex flex-col overflow-hidden">
+                <textarea id="editor" class="flex-1 w-full h-full resize-none outline-none text-slate-800 text-base sm:text-lg leading-relaxed placeholder-slate-300 bg-transparent hide-scrollbar" placeholder="Start Dictation or type notes here..."></textarea>
+                
+                <!-- Interim Transcript Overlay -->
+                <div id="interim-text" class="absolute bottom-2 left-2 right-2 sm:bottom-4 sm:left-4 sm:right-4 text-blue-500 italic pointer-events-none bg-white/90 backdrop-blur-sm px-2 py-1 rounded empty:hidden text-sm sm:text-base"></div>
+            </div>
+
+            <div class="h-16 sm:h-20 flex-none bg-slate-50 border-t border-slate-100 flex items-center justify-center w-full">
+                <button id="mic-btn" onclick="toggleRecording()" class="flex items-center justify-center gap-2 sm:gap-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-full font-bold shadow-lg shadow-blue-600/30 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-95 text-sm sm:text-base">
+                    <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sm:w-5 sm:h-5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                    <span id="mic-btn-text">Start Dictation</span>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // DOM Elements
+        const editor = document.getElementById('editor');
+        const interimTextDiv = document.getElementById('interim-text');
+        const micBtn = document.getElementById('mic-btn');
+        const micIcon = document.getElementById('mic-icon');
+        const micBtnText = document.getElementById('mic-btn-text');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const wordCount = document.getElementById('word-count');
+        const toastContainer = document.getElementById('toast-container');
+
+        // State variables
+        let isRecording = false;
+        let recognition = null;
+        let currentTranscript = '';
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+
+        const manifest = {
+            "name": "ClinicalScribe App",
+            "short_name": "Scribe",
+            "display": "standalone",
+            "background_color": "#f8fafc",
+            "theme_color": "#2563eb",
+            "icons": [{
+                "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIiIGhlaWdodD0iMTkyIiB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzI1NjNlYiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMiAyYTMgMyAwIDAgMC0zIDN2N2EzIDMgMCAwIDAgNiAwVjVhMyAzIDAgMCAwLTMtM1oiPjwvcGF0aD48cGF0aCBkPSJNMTkgMTB2MmE3IDcgMCAwIDEtMTQgMHYtMiI+PC9wYXRoPjxsaW5lIHgxPSIxMiIgeDI9IjEyIiB5MT0iMTkiIHkyPSIyMiI+PC9saW5lPjwvc3ZnPg==",
+                "sizes": "192x192",
+                "type": "image/svg+xml"
+            }]
+        };
+        const manifestElement = document.getElementById('dynamic-manifest');
+        if (manifestElement) {
+            manifestElement.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest));
+        }
+
+        function downloadLocalApp() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob(['<!DOCTYPE html>\n' + htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ClinicalScribe_App.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('App HTML saved! You can open this file directly on any device.', 'success');
+        }
+
+        function updateNetworkStatus() {
+            const networkIndicator = document.getElementById('network-status');
+            if (navigator.onLine) {
+                networkIndicator.classList.add('hidden');
+                networkIndicator.classList.remove('flex');
+            } else {
+                networkIndicator.classList.remove('hidden');
+                networkIndicator.classList.add('flex');
+                showToast('Device is offline. Note: Native dictation may require an internet connection or downloaded voice packs.', 'warning');
+            }
+        }
+
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+
+        // Pre-defined Templates
+        const templates = {
+            soap: "S: \n- Patient reports: \n\nO: \n- Vitals: \n- Physical Exam: \n\nA: \n- Diagnoses: \n\nP: \n- Medications: \n- Tests ordered: \n- Follow-up: ",
+            procedure: "PROCEDURE NOTE\n\nDate: \nPre-op Diagnosis: \nPost-op Diagnosis: \nProcedure Performed: \nSurgeon: \nAnesthesia: \nEstimated Blood Loss: \nComplications: None\n\nFindings: \n\nDescription of Procedure: \n",
+            consult: "CONSULTATION REPORT\n\nReason for Consult: \n\nHistory of Present Illness: \n\nPast Medical History: \n\nMedications: \n\nReview of Systems: \n\nPhysical Examination: \n\nAssessment & Recommendations: \n"
+        };
+
+        function initSpeechRecognition() {
+            // Check for browser support
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                showToast('Speech Recognition not supported in this browser. Please use Google Chrome or Microsoft Edge.', 'error');
+                micBtn.disabled = true;
+                micBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                statusText.innerText = 'Browser Not Supported';
+                statusDot.classList.replace('bg-slate-400', 'bg-red-500');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            
+            // Configuration for continuous dictation
+            recognition.continuous = true;
+            recognition.interimResults = true; // Show words as they are spoken
+            recognition.lang = 'en-US'; // Can be adapted based on user needs
+
+            // Event Listeners
+            recognition.onstart = () => {
+                isRecording = true;
+                retryCount = 0; // Reset retries on successful start
+                updateUIState();
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscriptChunk = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        // Append final results
+                        finalTranscriptChunk += event.results[i][0].transcript;
+                    } else {
+                        // Keep track of interim results
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                // Process final transcript text formatting (basic capitalization/spacing)
+                if (finalTranscriptChunk) {
+                    // Add space if editor isn't empty and doesn't end with whitespace/newline
+                    if (editor.value.length > 0 && !/\s$/.test(editor.value)) {
+                        editor.value += ' ';
+                    }
+                    
+                    // Simple logic to capitalize first letter if needed (can be improved)
+                    let textToAdd = finalTranscriptChunk;
+                    if (editor.value.length === 0 || editor.value.endsWith('. ') || editor.value.endsWith('\n')) {
+                        textToAdd = textToAdd.charAt(0).toUpperCase() + textToAdd.slice(1);
+                    }
+                    
+                    // Handle verbal punctuation commands manually if the engine misses them
+                    textToAdd = textToAdd
+                        .replace(/\bnew line\b/gi, '\n')
+                        .replace(/\bnew paragraph\b/gi, '\n\n')
+                        .replace(/\bperiod\b/gi, '.')
+                        .replace(/\bcomma\b/gi, ',');
+
+                    editor.value += textToAdd;
+                    updateWordCount();
+                    
+                    // Auto scroll to bottom
+                    editor.scrollTop = editor.scrollHeight;
+                }
+
+                // Show interim text
+                interimTextDiv.innerText = interimTranscript;
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                
+                if (event.error === 'not-allowed') {
+                    showToast('Microphone access denied. Please allow microphone permissions.', 'error');
+                    stopRecording();
+                } else if (event.error === 'network') {
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        console.log(`Network error. Retrying... Attempt ${retryCount} of ${MAX_RETRIES}`);
+                        showToast(`Network issue detected. Retrying connection... (${retryCount}/${MAX_RETRIES})`, 'warning');
+                        
+                        // Briefly stop and attempt to restart
+                        isRecording = false;
+                        updateUIState();
+                        
+                        setTimeout(() => {
+                            try {
+                                if(!isRecording) { // Ensure user hasn't manually stopped it
+                                    recognition.start();
+                                }
+                            } catch (e) {
+                                console.error('Failed to restart after network error:', e);
+                                showToast('Failed to reconnect to speech service. Please check your internet connection.', 'error');
+                                stopRecording();
+                            }
+                        }, 1000); // Wait 1 second before retrying
+                        
+                    } else {
+                        showToast('Speech recognition connection failed. Please check your internet or firewall settings.', 'error');
+                        stopRecording();
+                        retryCount = 0;
+                    }
+                } else if (event.error === 'no-speech') {
+                    // Ignore no-speech errors, they just mean silence
+                    console.log('No speech detected.');
+                } else {
+                     showToast(`Speech recognition error: ${event.error}`, 'error');
+                     stopRecording();
+                }
+            };
+
+            recognition.onend = () => {
+                // If it ends unexpectedly but we want it to keep recording (like a pause), 
+                // we'd restart it here. But for a controlled app, we wait for user to restart.
+                // We'll set state to stopped to be safe.
+                if (isRecording) {
+                    // Auto-restart if it disconnected due to silence but user didn't hit stop
+                    try {
+                        recognition.start();
+                    } catch(e) {
+                        stopRecording();
+                    }
+                } else {
+                    stopRecording();
+                }
+            };
+        }
+
+        function toggleRecording() {
+            if (!recognition) return;
+
+            if (isRecording) {
+                isRecording = false; // Set flag to false so onend doesn't auto-restart
+                recognition.stop();
+                stopRecording();
+            } else {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    // Catch if already started
+                    console.error(e);
+                }
+            }
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            updateUIState();
+            interimTextDiv.innerText = '';
+        }
+
+        function updateUIState() {
+            if (isRecording) {
+                // UI for Active Recording
+                micBtn.classList.replace('bg-blue-600', 'bg-red-500');
+                micBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
+                micBtn.classList.replace('shadow-blue-600/30', 'shadow-red-500/40');
+                micBtn.classList.add('recording-pulse');
+                
+                // Change icon to stop square
+                micIcon.innerHTML = '<rect width="12" height="12" x="6" y="6" rx="2" ry="2"></rect>';
+                micBtnText.innerText = 'Stop Dictation';
+
+                // Status Indicator
+                statusIndicator.classList.replace('bg-slate-100', 'bg-red-50');
+                statusText.classList.replace('text-slate-500', 'text-red-600');
+                statusText.innerText = 'Listening...';
+                statusDot.classList.replace('bg-slate-400', 'bg-red-500');
+                statusDot.classList.add('animate-pulse');
+
+            } else {
+                // UI for Idle
+                micBtn.classList.replace('bg-red-500', 'bg-blue-600');
+                micBtn.classList.replace('hover:bg-red-600', 'hover:bg-blue-700');
+                micBtn.classList.replace('shadow-red-500/40', 'shadow-blue-600/30');
+                micBtn.classList.remove('recording-pulse');
+                
+                // Change icon back to mic
+                micIcon.innerHTML = '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line>';
+                micBtnText.innerText = 'Start Dictation';
+
+                // Status Indicator
+                statusIndicator.classList.replace('bg-red-50', 'bg-slate-100');
+                statusText.classList.replace('text-red-600', 'text-slate-500');
+                statusText.innerText = 'Ready to dictate';
+                statusDot.classList.replace('bg-red-500', 'bg-slate-400');
+                statusDot.classList.remove('animate-pulse');
+            }
+        }
+
+        function insertTemplate(type) {
+            const template = templates[type];
+            if (!template) return;
+
+            // If editor has content, append with new lines, otherwise set directly
+            if (editor.value.trim().length > 0) {
+                editor.value += '\n\n' + template;
+            } else {
+                editor.value = template;
+            }
+            updateWordCount();
+            editor.focus();
+            showToast('Template inserted', 'success');
+        }
+
+        function clearText() {
+            // Instead of alert/confirm, we'll just clear it. 
+            // In a production app with a backend, we might save a draft.
+            if(editor.value.trim() === '') return;
+            
+            editor.value = '';
+            updateWordCount();
+            showToast('Editor cleared', 'info');
+        }
+
+        function copyToClipboard() {
+            const text = editor.value;
+            if (!text.trim()) {
+                showToast('Nothing to copy', 'warning');
+                return;
+            }
+
+            // Fallback copy mechanism
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Copied to clipboard!', 'success');
+            } catch (err) {
+                showToast('Failed to copy text', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function exportToTxt() {
+            const text = editor.value;
+            if (!text.trim()) {
+                showToast('Nothing to export', 'warning');
+                return;
+            }
+
+            const date = new Date().toISOString().split('T')[0];
+            const time = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+            const filename = `ClinicalNote_${date}_${time}.txt`;
+
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast('File exported successfully', 'success');
+        }
+
+        function updateWordCount() {
+            const text = editor.value.trim();
+            const count = text === '' ? 0 : text.split(/\s+/).length;
+            wordCount.innerText = `${count} word${count !== 1 ? 's' : ''}`;
+        }
+
+        // Event listener for manual typing
+        editor.addEventListener('input', updateWordCount);
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            
+            // Colors based on type
+            let bgClass = 'bg-slate-800';
+            let icon = '';
+            
+            if (type === 'success') {
+                bgClass = 'bg-emerald-600';
+                icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+            } else if (type === 'error') {
+                bgClass = 'bg-red-600';
+                icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" x2="9" y1="9" y2="15"></line><line x1="9" x2="15" y1="9" y2="15"></line></svg>';
+            } else if (type === 'warning') {
+                bgClass = 'bg-amber-500';
+                icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>';
+            } else {
+                icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12" x2="12.01" y1="16" y2="16"></line></svg>';
+            }
+
+            toast.className = `${bgClass} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 text-sm font-medium toast-enter max-w-sm pointer-events-auto`;
+            toast.innerHTML = `
+                ${icon}
+                <span>${message}</span>
+            `;
+
+            toastContainer.appendChild(toast);
+
+            // Remove toast after 3 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(100%)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => {
+                    if (toastContainer.contains(toast)) {
+                        toastContainer.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            initSpeechRecognition();
+            updateNetworkStatus();
+        });
+
+    </script>
+</body>
+</html>
